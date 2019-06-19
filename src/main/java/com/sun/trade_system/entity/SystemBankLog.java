@@ -25,8 +25,12 @@ public class SystemBankLog {
     private String id;
     @TableField("open_account_user_id")
     private String openAccountUserId; //操作人id
+    @TableField("from_bank_card_id")
+    private String fromBankCardId; //操作人id
+    @TableField("to_bank_card_id")
+    private String toBankCardId; //操作人id
     @TableField("open_account_user_name")
-    private String openAccountUserName; //操作人id
+    private String openAccountUserName; //操作人姓名
     @TableField("bank_id")
     private String bankId;
     @TableField("do_what")
@@ -39,5 +43,7 @@ public class SystemBankLog {
     private Date createTime; //操作时间
     @TableField("do_status")
     private Integer doStatus; //操作时间
+    @TableField("do_type")
+    private String doType; //操作时间
 
 }

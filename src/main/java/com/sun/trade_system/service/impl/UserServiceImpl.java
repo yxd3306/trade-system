@@ -21,7 +21,9 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.DigestUtils;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -48,7 +50,7 @@ public class UserServiceImpl implements UserService {
     private TransactionTemplate transactionTemplate;
 
     @Override
-    public String openAccount(SystemUser systemUser) {
+    public String openAccount(SystemUser systemUser,String password) {
 
         String bankName = systemUser.getOpenAccountBankName();
         SystemBank systemBank = bankService.getBankByName(bankName);
@@ -63,9 +65,13 @@ public class UserServiceImpl implements UserService {
             // 生成
             SystemBankCard systemBankCard = new SystemBankCard();
             systemBankCard.setId(IdGenerator.get());
-            String bankCardNumber = getRandomCode(19);
+            Date date = new Date();
+            SimpleDateFormat format = new SimpleDateFormat("yyyy");
+            // 6217002920129623089
+            String bankCardNumber = "621700"+getRandomCode(2)+format.format(date)+getRandomCode(7);
             systemBankCard.setBankCardNumber(bankCardNumber);
-            systemBankCard.setBankCardPassword("970311");
+            password = DigestUtils.md5DigestAsHex(password.getBytes());
+            systemBankCard.setBankCardPassword(password);
             systemBankCard.setBankCardUserBalance(0.0);
             systemBankCard.setBankCardType(1);
             systemBankCard.setBankCardStatus(1);
@@ -111,17 +117,18 @@ public class UserServiceImpl implements UserService {
             if(fromBalance<money){
                 return JsonUtil.okResult("卡上余额不足","卡上余额为："+DoubleUtil.formatDouble(fromBalance));
             }else{
-                fromBankCard.setBankCardUserBalance(fromBalance-money);
-                toBankCard.setBankCardUserBalance(toBankCard.getBankCardUserBalance()+money);
+                fromBankCard.setBankCardUserBalance((double)fromBalance-money);
+                toBankCard.setBankCardUserBalance((double)(toBankCard.getBankCardUserBalance()+money));
 
                 boolean flag = transactionTemplate.execute(new TransactionCallback<Boolean>() {
                     @Override
                     public Boolean doInTransaction(TransactionStatus transactionStatus) {
-                        return bankCardService.updateMoney(fromBankCard)==bankCardService.updateMoney(fromBankCard);
+                        boolean b = bankCardService.updateMoney(fromBankCard);
+                        boolean b1 = bankCardService.updateMoney(toBankCard);
+                        return b==b1;
                     }
                 });
                 if(flag){
-                    int i=1/0;
                     return JsonUtil.okResult("转账成功",null);
                 }
             }

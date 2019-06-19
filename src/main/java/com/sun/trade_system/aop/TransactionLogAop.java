@@ -41,63 +41,15 @@ import java.util.Map;
 @Slf4j
 public class TransactionLogAop {
 
-    private String logId=IdGenerator.get();
+    private String logId="";
 
     @Autowired
     private UserService userService;
     @Autowired
     private BankLogService bankLogService;
 
-    // 环绕通知
-    @Around("@annotation(transactionLog)")
-    public Object doAround(ProceedingJoinPoint pjp, TransactionLog transactionLog) throws Throwable {
-
-        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
-        HttpServletResponse response = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getResponse();
-        Map<String, String[]> parameterMap = request.getParameterMap();
-        String fromCardId = parameterMap.get("from")[0];
-        String toCardId = parameterMap.get("to")[0];
-
-        Signature signature = pjp.getSignature();
-        MethodSignature methodSignature = (MethodSignature) signature;
-        Method method = methodSignature.getMethod();
-        Lock lock = method.getDeclaredAnnotation(Lock.class);
-        if (null != lock) {
-            String key = lock.key();
-            // 上锁
-            if (LockUtil.tryLock(key, fromCardId + toCardId, 300)) {
-                // 获取操作用户
-                SystemUser fromUser = userService.findFromUserInfoById(fromCardId);
-                // 获取收账用户
-                SystemUser toUser = userService.findToUserInfoById(toCardId);
-                if (null != fromUser && null != toUser) {
-                    return pjp.proceed();
-
-                } else {
-                    response.setCharacterEncoding("UTF-8");
-                    response.setContentType("application/json; charset=utf-8");
-                    PrintWriter out = null;
-                    out = response.getWriter();
-                    out.append(JsonUtil.errorResult("非法参数"));
-                    out.close();
-                }
-            }else{
-                response.setCharacterEncoding("UTF-8");
-                response.setContentType("application/json; charset=utf-8");
-                PrintWriter out = null;
-                out = response.getWriter();
-                out.append(JsonUtil.errorResult("系统繁忙请稍后重试"));
-                out.close();
-            }
-        }
-        return null;
-
-
-    }
-
-    // 后置通知 正常运行返回
-    @AfterReturning("@annotation(transactionLog)")
-    public void doAfterReturning(JoinPoint joinPoint,TransactionLog transactionLog){
+    @Before("@annotation(transactionLog)")
+    public void doBefore(JoinPoint joinPoint,TransactionLog transactionLog){
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
         Map<String, String[]> parameterMap = request.getParameterMap();
         String fromCardId = parameterMap.get("from")[0];
@@ -138,8 +90,10 @@ public class TransactionLogAop {
                 .append(parameterMap.get("money")[0])
                 .append("元");
         SystemBankLog systemBankLog = new SystemBankLog();
-        systemBankLog.setId(logId);
+        systemBankLog.setId(logId=IdGenerator.get());
         systemBankLog.setOpenAccountUserId(userId);
+        systemBankLog.setFromBankCardId(fromCardId);
+        systemBankLog.setToBankCardId(toCardId);
         systemBankLog.setOpenAccountUserName(openAccountUserName);
         systemBankLog.setBankId(bankId);
         systemBankLog.setOperationIp(ip);
@@ -147,8 +101,61 @@ public class TransactionLogAop {
         systemBankLog.setDoWhat(doWith.toString());
         systemBankLog.setCreateTime(doTime);
         systemBankLog.setDoStatus(1);
-
+        systemBankLog.setDoType("转账");
         bankLogService.writer(systemBankLog);
+    }
+
+    // 环绕通知
+    @Around("@annotation(transactionLog)")
+    public Object doAround(ProceedingJoinPoint pjp, TransactionLog transactionLog) throws Throwable {
+
+        HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        HttpServletResponse response = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getResponse();
+        Map<String, String[]> parameterMap = request.getParameterMap();
+        String fromCardId = parameterMap.get("from")[0];
+        String toCardId = parameterMap.get("to")[0];
+
+        Signature signature = pjp.getSignature();
+        MethodSignature methodSignature = (MethodSignature) signature;
+        Method method = methodSignature.getMethod();
+        Lock lock = method.getDeclaredAnnotation(Lock.class);
+        if (null != lock) {
+            String key = lock.key();
+            // 上锁
+            if (LockUtil.tryLock(key, fromCardId + toCardId, 300,100)) {
+                // 获取操作用户
+                SystemUser fromUser = userService.findFromUserInfoById(fromCardId);
+                // 获取收账用户
+                SystemUser toUser = userService.findToUserInfoById(toCardId);
+                if (null != fromUser && null != toUser) {
+                    return pjp.proceed();
+
+                } else {
+                    response.setCharacterEncoding("UTF-8");
+                    response.setContentType("application/json; charset=utf-8");
+                    PrintWriter out = null;
+                    out = response.getWriter();
+                    out.append(JsonUtil.errorResult("非法参数"));
+                    out.close();
+                }
+            }else{
+                response.setCharacterEncoding("UTF-8");
+                response.setContentType("application/json; charset=utf-8");
+                PrintWriter out = null;
+                out = response.getWriter();
+                out.append(JsonUtil.errorResult("系统繁忙请稍后重试"));
+                out.close();
+            }
+        }
+        return null;
+
+
+    }
+
+    // 后置通知 正常运行返回
+    @AfterReturning("@annotation(transactionLog)")
+    public void doAfterReturning(JoinPoint joinPoint,TransactionLog transactionLog){
+
 
     }
 
@@ -171,14 +178,14 @@ public class TransactionLogAop {
     }
 
     // 异常通知
-    @AfterThrowing("@annotation(transactionLog)")
-    public void doAfterThrowing(JoinPoint joinPoint, TransactionLog transactionLog) {
+    @AfterThrowing(throwing = "ex",pointcut = "@annotation(transactionLog)")
+    public void doAfterThrowing(Exception ex,TransactionLog transactionLog) {
         SystemBankLog systemBankLog = bankLogService.findLogById(this.logId);
         if(null!=systemBankLog){
             String doWhat = systemBankLog.getDoWhat();
-            doWhat+=",但是失败了";
-            systemBankLog.setDoStatus(0);
+            doWhat+="----操作失败，原因是："+ex.getMessage();
             systemBankLog.setDoWhat(doWhat);
+            systemBankLog.setDoStatus(0);
             bankLogService.updateLogById(systemBankLog);
         }
     }

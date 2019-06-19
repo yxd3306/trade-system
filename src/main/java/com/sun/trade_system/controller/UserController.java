@@ -23,8 +23,8 @@ public class UserController {
     private UserService userService;
 
     @GetMapping("/create")
-    public String openAccount(SystemUser systemUser){
-        return userService.openAccount(systemUser);
+    public String openAccount(SystemUser systemUser,String password){
+        return userService.openAccount(systemUser,password);
     }
 
     @GetMapping("/addMoney")

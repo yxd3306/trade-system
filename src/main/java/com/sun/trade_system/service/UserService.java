@@ -9,7 +9,7 @@ import com.sun.trade_system.entity.SystemUser;
  * @Description:
  */
 public interface UserService {
-    String openAccount(SystemUser systemUser);
+    String openAccount(SystemUser systemUser,String password);
 
     String addMoney(String bankCardNumber, Double money);
 
